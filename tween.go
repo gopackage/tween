@@ -1,123 +1,138 @@
 package tween
 
-import "image/color"
 import "time"
-import "fmt"
 
-type TweenData struct {
-	duration  int64 // milliseconds
-	accum     int64 // how many milliseconds have elapsed
-	pace      int64 // how many milliseconds we should be at
-	startTime time.Time
-	running   bool
-	done      bool
+// Transitioner is the interface for calculating tweening transitions.
+type Transitioner interface {
+	// Transition calculates the percentage of the transition between the start
+	// and end values based tween (elapsed time) completion status.
+	// For example, a linear tween simply has a 1:1 ratio between completed
+	// and transition percentages and returns the completed value unchanged.
+	// An "ease in" transition may create a logorithmic relationship between
+	// the completion time and transition value for the first third, then a
+	// linear relationship for the remainder.
+	Transition(completed float64) float64
 }
 
-type ColorTweener struct {
-	Tween       TweenData
-	Starting    color.RGBA
-	Ending      color.RGBA
-	current     color.RGBA
-	Channel     chan *color.RGBA
-	stopChannel chan int
-	doneChannel chan int
+// Updater is the interface for updating the current value as it tweens between
+// start and end values of a Tween.
+type Updater interface {
+	// Start signals the beginning of a tween and is sent before the tweening
+	// begins. Start may be used to setup or pre-calculate updates.
+	//
+	// framerate is the number of frames per second in the tween
+	// frames is the total number of frames that be generated
+	// frameTime is the duration for each frame
+	// runningTime is the total duration for the entire tween
+	Start(framerate, frames int, frameTime, runningTime time.Duration)
+	// Update receives information about the current Tween Frame and should be
+	// used to update output or state.
+	Update(Frame Frame)
+	// End signals the end of the tween and is called after all updates.
+	// End may be used to clean up resources (e.g. update channels).
+	End()
 }
 
-// Duration in seconds
-func NewColorTweener(duration int64, start, stop color.RGBA) (*ColorTweener, <-chan *color.RGBA, <-chan int) {
-	channel := make(chan *color.RGBA, 10)
-	doneChannel := make(chan int)
-	c := &ColorTweener{
-		Tween: TweenData{
-			duration:  duration, // save duration in nanoseconds
-			accum:     0,
-			pace:      0,
-			startTime: time.Now(),
-			running:   false,
-			done:      false,
-		},
-		Starting:    start,
-		Ending:      stop,
-		current:     start,
-		Channel:     channel,
-		stopChannel: make(chan int),
-		doneChannel: doneChannel,
+// Frame captures information about the current "frame" of a tween transition.
+type Frame struct {
+	Completed    float64       // Completed is the percentage 0.0 - 1.0 of elapsed time.
+	Transitioned float64       // Transitioned is the percentage 0.0 - 1.0 of transition between start and end values of the tween.
+	Index        int           // Index is the current frame index
+	Elapsed      time.Duration // Elapsed is the current elapsed time in the tween.
+}
+
+// NewEngine creates a basic tween Engine with a framerate of 60fps.
+func NewEngine(duration time.Duration, transitioner Transitioner, updater Updater) *Engine {
+	return &Engine{
+		Duration:     duration,
+		Transitioner: transitioner,
+		Updater:      updater,
+		Framerate:    60,
 	}
-
-	return c, channel, doneChannel
 }
 
-func getNewColor(start, end color.RGBA, percent float64) color.RGBA {
-	spanRed := int(end.R) - int(start.R)
-	spanGreen := int(end.G) - int(start.G)
-	spanBlue := int(end.B) - int(start.B)
+// Engine runs a tween relying on transitioner and updater.
+type Engine struct {
+	Duration     time.Duration // The total duration of the tween.
+	Framerate    int           // The number of tween data points per second (defaults to 60 fps - like the real gamers use).
+	Transitioner Transitioner  // Transitioner calculates the transition curve for the tween.
+	Updater      Updater       // Updater updates the tween values for each frame.
 
-	newC := color.RGBA{
-		R: start.R + uint8(float64(spanRed)*percent),
-		G: start.G + uint8(float64(spanGreen)*percent),
-		B: start.B + uint8(float64(spanBlue)*percent),
-		A: 255,
-	}
-	return newC
+	running bool     // True if the tween is running
+	done    chan int // Internal channel used to terminate the tween early
 }
 
-func (c *ColorTweener) Start() {
-	if c.Tween.running != false || c.Tween.done != false {
-		return
-	}
+// Start begins the tween running.
+func (e *Engine) Start() {
+	e.done = make(chan int)
 	// can't stop this thread unless you call Stop() or let the timer
 	// run out
 	go func() {
+		// Setup internal done channel
+		e.done = make(chan int)
+
+		// Based on fps we can calculate how long a frame is:
+		frameDuration := time.Second / time.Duration(e.Framerate) // The duration in a frame
+		cutoff := e.Duration - frameDuration                      // The cutoff point where elapsed time is considered "done"
+		frames := int(e.Duration / frameDuration)                 // The number of frames in the duration
+
+		// start ticker
+		e.running = true
+		e.Updater.Start(e.Framerate, frames, frameDuration, e.Duration)
+
+		// Send initial frame
+		frame := Frame{}
+		e.Updater.Update(frame)
+
 		// set start time
-		c.Tween.startTime = time.Now()
+		ticker := time.NewTicker(frameDuration)
+		timeChan := ticker.C
+		started := time.Now()
 
-		// start initial timer
-		timeChan := time.NewTimer(time.Millisecond).C
-
-		// set pace what we should end up at
-		c.Tween.pace += 1
-
-		for !c.Tween.done {
+		for e.running {
 			select {
 			case <-timeChan:
-				c.Tween.pace += 1
-				c.Tween.accum = int64(time.Now().Sub(c.Tween.startTime) / time.Millisecond)
-				// get new color and send color update
-				percentageComplete := (float64(c.Tween.accum) / float64(c.Tween.duration))
-				if percentageComplete > 1 {
-					percentageComplete = 1
+				frame.Elapsed = time.Since(started)
+
+				// Calculate the frame index - some frames can be skipped so
+				// must find correct time slot for this elapsed time
+				frame.Index = int(frame.Elapsed / frameDuration)
+
+				// Calculate the completed percentage of time
+				frame.Completed = ((float64(frame.Index) * float64(frameDuration)) / float64(e.Duration))
+				if frame.Completed > 1 {
+					go e.Stop()
+					break
 				}
-				fmt.Printf("percentage complete: %f\n", percentageComplete)
-				c.current = getNewColor(c.Starting, c.Ending, percentageComplete)
-				c.Channel <- &c.current
+
+				// Calulate the completed percentage of the transition
+				frame.Transitioned = e.Transitioner.Transition(frame.Completed)
+
+				// Update the value
+				e.Updater.Update(frame)
 
 				// see if we should keep going
-				if c.Tween.pace != c.Tween.duration {
-					// figure out how long we should run new timer for
-					newTimerVal := c.Tween.pace - c.Tween.accum // in milliseconds
-					if newTimerVal < 0 {
-						newTimerVal = 0
-					}
-
-					// run timer
-					timeChan = time.NewTimer(time.Duration(newTimerVal) * time.Millisecond).C
-				} else {
-					// done, send on stopChannel to complete
-					c.Tween.done = true
+				if frame.Elapsed > cutoff {
+					go e.Stop() // terminate ourself
 				}
-			case <-c.stopChannel:
-				c.Tween.done = true
+			case <-e.done:
+				ticker.Stop()
+				e.running = false
 			}
 		}
 
-		// do cleanup
-		c.Channel <- &c.Ending
-		c.doneChannel <- 1
+		// cleanup
+		frame.Elapsed = e.Duration
+		frame.Completed = 1
+		frame.Transitioned = 1
+		e.Updater.Update(frame)
+		e.Updater.End()
 	}()
 }
 
-func (c *ColorTweener) Stop() {
-	if c.Tween.running == true {
-		c.stopChannel <- 1
+// Stop terminates the tween immediately.
+func (e *Engine) Stop() {
+	if e.running == true {
+		e.done <- 1
 	}
 }

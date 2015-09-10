@@ -1,32 +1,53 @@
 package tween_test
 
 import (
-	. "../tween"
+	"time"
+
+	. "github.com/gopackage/tween"
+	"github.com/gopackage/tween/curves"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
 
+type Recorder struct {
+	Frames      []Frame
+	FPS         int
+	TotalFrames int
+	FTime       time.Duration
+	Running     time.Duration
+	Done        chan int
+}
+
+func (u *Recorder) Start(framerate, frames int, frameTime, runningTime time.Duration) {
+	u.FPS = framerate
+	u.TotalFrames = frames
+	u.FTime = frameTime
+	u.Running = runningTime
+}
+
+func (u *Recorder) Update(frame Frame) {
+	u.Frames = append(u.Frames, frame)
+}
+
+func (u *Recorder) End() {
+	u.Done <- 1
+}
+
 var _ = Describe("Core", func() {
-
-	Describe("Color Manager", func() {
-		It("should convert colors to PWM values", func() {
-			// c, err := controller.NewController()
-			// Ω(err).ShouldNot(HaveOccurred())
-			c, colors, done := NewColorTween(600, color.RGBA{255, 0, 0, 255}, color.RGBA{0, 128, 255})
-
-			running := true
-			var color *color.RGBA
-			for running {
-				select {
-				case c = <-colors:
-					fmt.Printf("New color: %+v\n", c)
-				case <-done:
-					running = false
-				}
-			}
-
-			Ω(c).ShouldNot(BeNil())
-		})
+	Describe("Engine", func() {
+		It("should generate frames", func(done Done) {
+			d := make(chan int)
+			recorder := &Recorder{Done: d}
+			engine := NewEngine(time.Second, &curves.Linear{}, recorder)
+			engine.Start()
+			<-d
+			Ω(recorder.FPS).Should(Equal(60))
+			Ω(recorder.TotalFrames).Should(Equal(60))
+			Ω(recorder.FTime).Should(Equal(16666666 * time.Nanosecond))
+			Ω(recorder.Running).Should(Equal(time.Second))
+			Ω(recorder.Frames).Should(HaveLen(61))
+			close(done)
+		}, 2)
 	})
 })
