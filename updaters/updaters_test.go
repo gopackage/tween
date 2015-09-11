@@ -14,7 +14,7 @@ import (
 
 var _ = Describe("Core", func() {
 	Describe("Color Tween", func() {
-		It("should generate color tween values", func() {
+		It("should generate color tween values", func(done Done) {
 			start := color.RGBA{255, 0, 0, 255}
 			end := color.RGBA{0, 128, 255, 0}
 
@@ -33,6 +33,9 @@ var _ = Describe("Core", func() {
 				}
 			}
 			Ω(colors).Should(HaveLen(61))
-		})
+			Ω(colors[len(colors)-1]).Should(Equal(end))
+			Ω(colors[0]).Should(Equal(start))
+			close(done)
+		}, 2)
 	})
 })

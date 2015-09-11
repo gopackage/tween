@@ -8,12 +8,12 @@ import (
 )
 
 // NewColor creates a new color updater with the provided colors and
-// initializes a buffered channel for Updates and an unbuffered channel for Done.
+// initializes unbuffered channels for Updates and Done signal.
 func NewColor(from, to color.RGBA) *Color {
 	return &Color{
 		From:    from,
 		To:      to,
-		Updates: make(chan color.RGBA, 10),
+		Updates: make(chan color.RGBA),
 		Done:    make(chan int),
 	}
 }
@@ -30,6 +30,7 @@ type Color struct {
 	r    float64    // r is the total red transition
 	g    float64    // r is the total green transition
 	b    float64    // b is the total blue transition
+	a    float64    // b is the total alpha transition
 }
 
 // Start begins the color update.
@@ -41,6 +42,7 @@ func (c *Color) Start(framerate, frames int, frameTime, runningTime time.Duratio
 	c.r = float64(int(c.to.R) - int(c.from.R))
 	c.g = float64(int(c.to.G) - int(c.from.G))
 	c.b = float64(int(c.to.B) - int(c.from.B))
+	c.a = float64(int(c.to.A) - int(c.from.A))
 }
 
 // Update interpolates the color between start and end.
@@ -49,7 +51,7 @@ func (c *Color) Update(frame tween.Frame) {
 		R: c.from.R + uint8(c.r*frame.Transitioned),
 		G: c.from.G + uint8(c.g*frame.Transitioned),
 		B: c.from.B + uint8(c.b*frame.Transitioned),
-		A: 255,
+		A: c.from.A + uint8(c.a*frame.Transitioned),
 	}
 }
 

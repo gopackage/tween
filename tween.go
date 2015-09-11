@@ -125,6 +125,7 @@ func (e *Engine) Start() {
 		frame.Elapsed = e.Duration
 		frame.Completed = 1
 		frame.Transitioned = 1
+		frame.Index = frames
 		e.Updater.Update(frame)
 		e.Updater.End()
 	}()
