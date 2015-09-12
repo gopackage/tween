@@ -1,4 +1,4 @@
-package tween_test
+package curves_test
 
 import (
 	"testing"

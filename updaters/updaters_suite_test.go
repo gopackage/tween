@@ -1,4 +1,4 @@
-package tween_test
+package updaters_test
 
 import (
 	"testing"
