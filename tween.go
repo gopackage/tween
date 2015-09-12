@@ -2,17 +2,14 @@ package tween
 
 import "time"
 
-// Transitioner is the interface for calculating tweening transitions.
-type Transitioner interface {
-	// Transition calculates the percentage of the transition between the start
-	// and end values based tween (elapsed time) completion status.
-	// For example, a linear tween simply has a 1:1 ratio between completed
-	// and transition percentages and returns the completed value unchanged.
-	// An "ease in" transition may create a logorithmic relationship between
-	// the completion time and transition value for the first third, then a
-	// linear relationship for the remainder.
-	Transition(completed float64) float64
-}
+// TransitionFunc calculates the percentage of the transition between the start
+// and end values based tween (elapsed time) completion status.
+// For example, a linear tween simply has a 1:1 ratio between completed
+// and transition percentages and returns the completed value unchanged.
+// An "ease in" transition may create a logorithmic relationship between
+// the completion time and transition value for the first third, then a
+// linear relationship for the remainder.
+type TransitionFunc func(completed float64) float64
 
 // Updater is the interface for updating the current value as it tweens between
 // start and end values of a Tween.
@@ -42,21 +39,21 @@ type Frame struct {
 }
 
 // NewEngine creates a basic tween Engine with a framerate of 60fps.
-func NewEngine(duration time.Duration, transitioner Transitioner, updater Updater) *Engine {
+func NewEngine(duration time.Duration, transition TransitionFunc, updater Updater) *Engine {
 	return &Engine{
-		Duration:     duration,
-		Transitioner: transitioner,
-		Updater:      updater,
-		Framerate:    60,
+		Duration:   duration,
+		Transition: transition,
+		Updater:    updater,
+		Framerate:  60,
 	}
 }
 
 // Engine runs a tween relying on transitioner and updater.
 type Engine struct {
-	Duration     time.Duration // The total duration of the tween.
-	Framerate    int           // The number of tween data points per second (defaults to 60 fps - like the real gamers use).
-	Transitioner Transitioner  // Transitioner calculates the transition curve for the tween.
-	Updater      Updater       // Updater updates the tween values for each frame.
+	Duration   time.Duration  // The total duration of the tween.
+	Framerate  int            // The number of tween data points per second (defaults to 60 fps - like the real gamers use).
+	Transition TransitionFunc // Transition calculates the transition curve for the tween.
+	Updater    Updater        // Updater updates the tween values for each frame.
 
 	running bool     // True if the tween is running
 	done    chan int // Internal channel used to terminate the tween early
@@ -106,7 +103,7 @@ func (e *Engine) Start() {
 				}
 
 				// Calulate the completed percentage of the transition
-				frame.Transitioned = e.Transitioner.Transition(frame.Completed)
+				frame.Transitioned = e.Transition(frame.Completed)
 
 				// Update the value
 				e.Updater.Update(frame)

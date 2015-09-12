@@ -19,7 +19,7 @@ var _ = Describe("Core", func() {
 			end := color.RGBA{0, 128, 255, 0}
 
 			updater := NewColor(start, end)
-			engine := tween.NewEngine(time.Second, &curves.Linear{}, updater)
+			engine := tween.NewEngine(time.Second, curves.Linear, updater)
 			engine.Start()
 
 			running := true

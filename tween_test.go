@@ -39,7 +39,7 @@ var _ = Describe("Core", func() {
 		It("should generate frames", func(done Done) {
 			d := make(chan int)
 			recorder := &Recorder{Done: d}
-			engine := NewEngine(time.Second, &curves.Linear{}, recorder)
+			engine := NewEngine(time.Second, curves.Linear, recorder)
 			engine.Start()
 			<-d
 			Ω(recorder.FPS).Should(Equal(60))
