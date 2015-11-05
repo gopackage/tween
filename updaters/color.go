@@ -9,10 +9,14 @@ import (
 
 // NewColor creates a new color updater with the provided colors and
 // initializes unbuffered channels for Updates and Done signal.
-func NewColor(from, to color.RGBA) *Color {
+func NewColor(from, to color.Color) *Color {
+	r, g, b, a := from.RGBA()
+	f := color.RGBA{uint8(r), uint8(g), uint8(b), uint8(a)}
+	r, g, b, a = to.RGBA()
+	t := color.RGBA{uint8(r), uint8(g), uint8(b), uint8(a)}
 	return &Color{
-		From:    from,
-		To:      to,
+		From:    f,
+		To:      t,
 		Updates: make(chan color.RGBA),
 		Done:    make(chan int),
 	}
