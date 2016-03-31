@@ -131,6 +131,6 @@ func (e *Engine) Start() {
 // Stop terminates the tween immediately.
 func (e *Engine) Stop() {
 	if e.running == true {
-		e.done <- 1
+		close(e.done)
 	}
 }

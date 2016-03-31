@@ -61,5 +61,5 @@ func (c *Color) Update(frame tween.Frame) {
 
 // End terminates the color updates.
 func (c *Color) End() {
-	c.Done <- 1
+	close(c.Done)
 }
